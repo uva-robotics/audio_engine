@@ -16,9 +16,12 @@ class AudioEngine():
     def __init__(self):
         self.desired_sample_rate = 16000
         self.desired_channels = 1
-        self.sub = rospy.Subscriber(NAOQI_AUDIO_TOPIC, AudioBuffer, self.audio_cb)
         self.convert = rospy.Publisher(CONVERTED_AUDIO_TOPIC, Float32MultiArray, queue_size=10)
         self.buffer = []
+        self.buffer_size = 512
+
+        self.sub = rospy.Subscriber(NAOQI_AUDIO_TOPIC, AudioBuffer, self.audio_cb)
+
 
     def downsample(self, audio, n):
         """Downsample audio. Keep only every n'th element"""
@@ -41,7 +44,6 @@ class AudioEngine():
         frequency = data.frequency
         total_channels = len(data.channelMap)
         
-        
         audio = list(data.data)
 
         # 4-channel to mono
@@ -53,10 +55,18 @@ class AudioEngine():
         audiodata = self.downsample(audiodata, frequency / self.desired_sample_rate)
 
         # Voice frequency between 300 and 3500
-        audiodata = self.butter_bandpass_filter(audiodata, 300, 3500, self.desired_sample_rate)
-        m = Float32MultiArray()
-        m.data = audiodata
-        self.convert.publish(m)
+        audiodata = self.butter_bandpass_filter(audiodata, 300, 3400, self.desired_sample_rate)
+
+        self.buffer.extend(audiodata)
+
+        ms_in_buffer = len(self.buffer)/float(self.desired_sample_rate) * 1000
+        print(ms_in_buffer)
+
+        if ms_in_buffer >= self.buffer_size:
+            m = Float32MultiArray()
+            m.data = self.buffer
+            self.convert.publish(m)
+            self.buffer = []
     
 if __name__=="__main__":
     rospy.init_node('audio_engine')
