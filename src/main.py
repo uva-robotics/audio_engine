@@ -7,21 +7,45 @@ from naoqi_bridge_msgs.msg import AudioBuffer
 from std_msgs.msg import Float32MultiArray
 from scipy.signal import butter, lfilter
 
+import chardet
 
 NAOQI_AUDIO_TOPIC = '/pepper_robot/audio'
 CONVERTED_AUDIO_TOPIC = '/converted_audio'
+AUDIO_LOCALIZATION_TOPIC = '/audio_localization'
 
 
-class AudioEngine():
+def calc_rms(audio):
+    return np.sqrt(np.mean(audio**2))
+
+class LocalizeAudio():
+
+    def __init__(self, channels):
+        self.channels = channels
+        self.localization = rospy.Publisher(AUDIO_LOCALIZATION_TOPIC, Float32MultiArray, queue_size=10)
+
+
+    def process(self, data):
+        # uint8 CHANNEL_FRONT_LEFT=0
+        # uint8 CHANNEL_FRONT_RIGHT=2
+        # uint8 CHANNEL_REAR_LEFT=3
+        # uint8 CHANNEL_REAR_RIGHT=5
+        samples_per_channel = int(len(data.data) / self.channels)
+        channel_data = np.reshape(data.data, (self.channels, samples_per_channel), 'F')
+
+        rms_data = [calc_rms(i) for i in channel_data]
+
+        m = Float32MultiArray()
+        m.data = rms_data
+        self.localization.publish(m)
+
+class MonoConvert():
+
     def __init__(self):
         self.desired_sample_rate = 16000
         self.desired_channels = 1
-        self.convert = rospy.Publisher(CONVERTED_AUDIO_TOPIC, Float32MultiArray, queue_size=10)
+        self.mono_audio = rospy.Publisher(CONVERTED_AUDIO_TOPIC, Float32MultiArray, queue_size=10)
         self.buffer = []
         self.buffer_size = 512
-
-        self.sub = rospy.Subscriber(NAOQI_AUDIO_TOPIC, AudioBuffer, self.audio_cb)
-
 
     def downsample(self, audio, n):
         """Downsample audio. Keep only every n'th element"""
@@ -39,8 +63,9 @@ class AudioEngine():
         b, a = self.butter_bandpass(lowcut, highcut, fs, order=order)
         y = lfilter(b, a, data)
         return y
-        
-    def audio_cb(self, data):
+
+
+    def convert(self, data):
         frequency = data.frequency
         total_channels = len(data.channelMap)
         
@@ -60,13 +85,28 @@ class AudioEngine():
         self.buffer.extend(audiodata)
 
         ms_in_buffer = len(self.buffer)/float(self.desired_sample_rate) * 1000
-        print(ms_in_buffer)
 
         if ms_in_buffer >= self.buffer_size:
             m = Float32MultiArray()
             m.data = self.buffer
-            self.convert.publish(m)
+            self.mono_audio.publish(m)
             self.buffer = []
+
+
+class AudioEngine():
+    def __init__(self):
+        
+        self.channels = 4
+        self.mono_convert = MonoConvert()
+        self.localize = LocalizeAudio(self.channels)
+        self.sub = rospy.Subscriber(NAOQI_AUDIO_TOPIC, AudioBuffer, self.audio_cb)
+
+    def audio_cb(self, data):
+        
+        self.localize.process(data)
+        self.mono_convert.convert(data)
+        # print(len(data.channelMap))
+        
     
 if __name__=="__main__":
     rospy.init_node('audio_engine')
