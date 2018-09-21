@@ -80,7 +80,7 @@ class MonoConvert():
         audiodata = self.downsample(audiodata, frequency / self.desired_sample_rate)
 
         # Voice frequency between 300 and 3500
-        audiodata = self.butter_bandpass_filter(audiodata, 300, 3400, self.desired_sample_rate)
+        audiodata = self.butter_bandpass_filter(audiodata, 250, 4000, self.desired_sample_rate)
 
         self.buffer.extend(audiodata)
 
@@ -102,7 +102,6 @@ class AudioEngine():
         self.sub = rospy.Subscriber(NAOQI_AUDIO_TOPIC, AudioBuffer, self.audio_cb)
 
     def audio_cb(self, data):
-        
         self.localize.process(data)
         self.mono_convert.convert(data)
         # print(len(data.channelMap))
