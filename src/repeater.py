@@ -23,7 +23,7 @@ class AudioRepeater():
             channels=self.desired_channels, 
             rate=self.desired_sample_rate, 
             output=True,
-            output_device_index=7,
+            # output_device_index=7,
             frames_per_buffer=self.CHUNKSIZE)
 
         rospy.Subscriber(AUDIO_TOPIC, Float32MultiArray, self.audio_cb)
@@ -31,6 +31,7 @@ class AudioRepeater():
 
 
     def audio_cb(self, data):
+        print(data)
         audiodata = np.asarray(data.data)
         data = audiodata.astype(np.int16).tostring()
         self.stream.write(data)
